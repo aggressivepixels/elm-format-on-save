@@ -95,6 +95,9 @@ def is_excluded(on_save, path):
 #### EXPLORE PATH ####
 
 
+EXTS = os.environ['PATHEXT'].lower().split(os.pathsep) if os.name == 'nt' else ['']
+
+
 def find_elm_format(view):
     settings = sublime.load_settings('elm-format-on-save.sublime-settings')
     given_path = settings.get('absolute_path')
@@ -105,10 +108,13 @@ def find_elm_format(view):
         open_panel(view, bad_absolute_path)
         return None
 
+    local_elm_format = find_local_elm_format(os.path.dirname(view.file_name()))
+    if local_elm_format != None:
+        return local_elm_format
+
     # shutil.which('elm-format', mode=os.X_OK) # only available in Python 3.3
-    exts = os.environ['PATHEXT'].lower().split(os.pathsep) if os.name == 'nt' else ['']
     for directory in os.environ['PATH'].split(os.pathsep):
-        for ext in exts:
+        for ext in EXTS:
             path = os.path.join(directory, 'elm-format' + ext)
             if os.access(path, os.X_OK):
                 return path
@@ -116,6 +122,31 @@ def find_elm_format(view):
     open_panel(view, cannot_find_elm_format())
     return None
 
+
+elm_format_for_path_cache = {}
+
+
+def find_local_elm_format(directory):
+    cached_elm_format_path = elm_format_for_path_cache.get(directory)
+    if cached_elm_format_path != None:
+        if os.access(cached_elm_format_path, os.X_OK):
+            return cached_elm_format_path
+        else:
+            del elm_format_for_path_cache[directory]
+            return find_local_elm_format(directory)
+
+    if directory == '/':
+        return None
+
+    for file in os.listdir(directory):
+        if file == 'node_modules' and os.path.isdir(os.path.join(directory, file)):
+            for ext in EXTS:
+                path = os.path.join(directory, 'node_modules', 'elm-format', 'unpacked_bin', 'elm-format' + ext)
+                if os.access(path, os.X_OK):
+                    elm_format_for_path_cache[directory] = path
+                    return path
+
+    return find_local_elm_format(os.path.dirname(directory))
 
 
 #### ERROR MESSAGES ####
